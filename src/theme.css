@@ -1,0 +1,70 @@
+/**
+ * Fine Mountain Consulting design tokens.
+ *
+ * Import after Tailwind in the consuming app's index.css:
+ *
+ *   @import "tailwindcss";
+ *   @import "@fmc/knack-ui/theme.css";
+ *
+ * Client re-skins override --color-brand-* AFTER this import. Never edit
+ * component code for a re-skin.
+ */
+
+/* Tailwind ignores node_modules when scanning for classes, so the package's
+   own components would ship unstyled without this. The path is relative to
+   this file, i.e. the package's dist. */
+@source "./";
+
+@theme {
+  /* ── Brand: crimson. Primary actions, active nav, focus. ────────────────
+     NOTE: the legacy HIPAA4Knack tailwind.config.js has these token *names*
+     scrambled against their values (its `fmc-green` holds crimson, its
+     `fmc-crimson` holds gray). These are the corrected names. */
+  --color-brand-50: #fef2f4;
+  --color-brand-100: #fde6e9;
+  --color-brand-200: #f9c2ca;
+  --color-brand-300: #f38496;
+  --color-brand-400: #ea4d66;
+  --color-brand-500: #c41e3a;
+  --color-brand-600: #b01a34;
+  --color-brand-700: #8e1428;
+  --color-brand-800: #6b0f1e;
+  --color-brand-900: #4a0a15;
+
+  /* ── Forest: logo mountain green. Accents and icons. ─────────────────── */
+  --color-forest-50: #f0f9f1;
+  --color-forest-100: #d7f0db;
+  --color-forest-200: #afdeb6;
+  --color-forest-300: #78c483;
+  --color-forest-400: #4aab59;
+  --color-forest-500: #2d9040;
+  --color-forest-600: #247534;
+  --color-forest-700: #1c5f29;
+  --color-forest-800: #154820;
+  --color-forest-900: #0e3017;
+
+  /* ── Steel: "CONSULTING" wordmark gray. Text, borders, chrome. ───────── */
+  --color-steel-50: #f7f7f8;
+  --color-steel-100: #ededef;
+  --color-steel-200: #d4d4d9;
+  --color-steel-300: #b4b4bc;
+  --color-steel-400: #8a8b95;
+  --color-steel-500: #5c6370;
+  --color-steel-600: #4a5058;
+  --color-steel-700: #383d45;
+  --color-steel-800: #26292f;
+  --color-steel-900: #16181c;
+}
+
+/* Respect the OS setting. A business app used all day should not animate at
+   someone who has asked it not to. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
