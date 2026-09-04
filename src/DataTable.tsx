@@ -40,6 +40,9 @@ export interface DataTableProps<T> {
   totalPages?: number;
   totalRecords?: number;
   onPageChange?: (page: number) => void;
+  /** Rows per page. Pass with `onPageSizeChange` to offer the size control. */
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
 
   emptyTitle?: string;
   emptyDescription?: string;
@@ -75,6 +78,8 @@ export const DataTable = <T,>({
   totalPages = 1,
   totalRecords,
   onPageChange,
+  pageSize,
+  onPageSizeChange,
   emptyTitle = 'Nothing here yet',
   emptyDescription,
   emptyAction,
@@ -278,11 +283,17 @@ export const DataTable = <T,>({
           totalRecords={totalRecords}
           onPageChange={onPageChange}
           disabled={loading}
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
         />
       )}
     </div>
   );
 };
+
+/** The estate default: ten rows, with the reader free to ask for more. */
+export const DEFAULT_PAGE_SIZE = 10;
+export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export interface PaginationProps {
   page: number;
@@ -290,6 +301,13 @@ export interface PaginationProps {
   totalRecords?: number;
   onPageChange: (page: number) => void;
   disabled?: boolean;
+  /**
+   * Current rows per page. Supply this together with `onPageSizeChange` to
+   * show the size control; omit both to hide it.
+   */
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: readonly number[];
 }
 
 export const Pagination = ({
@@ -298,21 +316,47 @@ export const Pagination = ({
   totalRecords,
   onPageChange,
   disabled,
+  pageSize,
+  onPageSizeChange,
+  pageSizeOptions = PAGE_SIZE_OPTIONS,
 }: PaginationProps) => (
   <nav
     aria-label="Pagination"
-    className="flex items-center justify-between gap-4 border-t border-steel-200 px-4 py-3"
+    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-steel-200 px-4 py-3"
   >
-    <p className="text-sm text-steel-500">
-      Page <span className="font-medium tabular-nums">{page}</span> of{' '}
-      <span className="font-medium tabular-nums">{totalPages}</span>
-      {totalRecords !== undefined && (
-        <span className="hidden sm:inline">
-          {' '}
-          · <span className="tabular-nums">{totalRecords.toLocaleString()}</span> records
-        </span>
+    <div className="flex items-center gap-3">
+      <p className="text-sm text-steel-500">
+        Page <span className="font-medium tabular-nums">{page}</span> of{' '}
+        <span className="font-medium tabular-nums">{totalPages}</span>
+        {totalRecords !== undefined && (
+          <span className="hidden sm:inline">
+            {' '}
+            · <span className="tabular-nums">{totalRecords.toLocaleString()}</span> records
+          </span>
+        )}
+      </p>
+
+      {pageSize !== undefined && onPageSizeChange && (
+        <label className="flex items-center gap-1.5 text-sm text-steel-500">
+          <span className="sr-only sm:not-sr-only">Show</span>
+          <select
+            value={pageSize}
+            disabled={disabled}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="rounded-lg border border-steel-300 bg-white py-1 pl-2 pr-7 text-sm text-steel-900 shadow-sm focus:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-steel-100"
+            aria-label="Rows per page"
+          >
+            {pageSizeOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="hidden sm:inline">per page</span>
+        </label>
       )}
-    </p>
+    </div>
+
     <div className="flex gap-2">
       <Button size="sm" onClick={() => onPageChange(page - 1)} disabled={disabled || page <= 1}>
         Previous

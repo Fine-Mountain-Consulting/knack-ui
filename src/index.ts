@@ -55,7 +55,7 @@ export type {
   FileUploadProps,
 } from './fields.js';
 
-export { DataTable, Pagination } from './DataTable.js';
+export { DataTable, Pagination, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './DataTable.js';
 export type { Column, DataTableProps, PaginationProps, SortState } from './DataTable.js';
 
 export { KnackForm } from './KnackForm.js';
