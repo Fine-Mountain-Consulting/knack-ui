@@ -66,7 +66,7 @@ export type {
   KnackFormValues,
 } from './KnackForm.js';
 
-export { AppShell } from './AppShell.js';
+export { AppShell, AttributionFooter, FMC_URL } from './AppShell.js';
 export type { AppShellProps, NavItem, NavSection } from './AppShell.js';
 
 export { Tabs, RecordDetail, SearchInput, useToasts, ToastRegion } from './misc.js';

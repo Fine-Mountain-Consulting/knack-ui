@@ -34,6 +34,13 @@ export interface AppShellProps {
   }) => ReactNode;
   /** User menu, sign-out, etc. */
   userMenu?: ReactNode;
+  /**
+   * The "Developed by Fine Mountain Consulting" footer. On by default, so it
+   * cannot be forgotten; set false only where a contract white-labels the app,
+   * which makes removing it an explicit line in that client's repo rather than
+   * something that quietly never appeared.
+   */
+  attribution?: boolean;
   children: ReactNode;
 }
 
@@ -60,6 +67,7 @@ export const AppShell = ({
   renderLink,
   userMenu,
   children,
+  attribution = true,
 }: AppShellProps) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -177,7 +185,36 @@ export const AppShell = ({
         </header>
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+
+        {attribution && <AttributionFooter />}
       </div>
     </div>
   );
 };
+
+/**
+ * Where the attribution links to. One constant, so changing it is a release of
+ * this package rather than a sweep across every client repo.
+ */
+export const FMC_URL = 'https://finemountainconsulting.com/custom-ui';
+
+/**
+ * Quiet by design: muted, in the flow of the page, never fixed or floating.
+ * Rendered by <AppShell> on every authenticated page, and worth rendering on
+ * the login screen too — that is the page a prospective client sees most.
+ */
+export const AttributionFooter = ({ className }: { className?: string }) => (
+  <footer className={cx('px-4 pb-6 pt-2 text-center sm:px-6 lg:px-8', className)}>
+    <p className="text-xs text-steel-400">
+      Developed by{' '}
+      <a
+        href={FMC_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-steel-500 underline decoration-steel-300 underline-offset-2 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+      >
+        Fine Mountain Consulting
+      </a>
+    </p>
+  </footer>
+);
