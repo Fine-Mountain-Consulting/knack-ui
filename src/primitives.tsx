@@ -157,6 +157,41 @@ export const statusTones = <T extends string>(
   return (value) => (value ? ((map as Record<string, BadgeTone>)[value] ?? 'neutral') : 'neutral');
 };
 
+export interface SpinnerProps {
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+  /** Announced to screen readers. Set null inside an element already labelled. */
+  label?: string | null;
+}
+
+const SPINNER_SIZES = { sm: 'h-4 w-4', md: 'h-5 w-5', lg: 'h-8 w-8' } as const;
+
+/**
+ * The indeterminate wait.
+ *
+ * Use it whenever the app is waiting on the network and there is no shape to
+ * preview: a refetch over existing rows, a submit, a panel opening. Where the
+ * shape *is* known and the area is empty — a table's first load, a page's first
+ * paint — a `<Skeleton>` is better, because it shows the layout arriving instead
+ * of a symbol that could mean anything.
+ *
+ * What is never acceptable is neither. A wait with no indicator reads as a
+ * broken click, and the user's next move is to click again.
+ */
+export const Spinner = ({ size = 'md', className, label = 'Loading' }: SpinnerProps) => (
+  <span
+    role={label ? 'status' : undefined}
+    aria-live={label ? 'polite' : undefined}
+    className={cx('inline-flex items-center', className)}
+  >
+    <ArrowPathIcon
+      className={cx(SPINNER_SIZES[size], 'animate-spin text-steel-400')}
+      aria-hidden="true"
+    />
+    {label && <span className="sr-only">{label}</span>}
+  </span>
+);
+
 // ── Empty / loading / error states ──────────────────────────────────────────
 
 export interface EmptyStateProps {

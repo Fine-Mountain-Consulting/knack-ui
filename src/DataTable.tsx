@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
-import { Button, EmptyState, ErrorState, Skeleton, cx } from './primitives.js';
+import { Button, EmptyState, ErrorState, Skeleton, Spinner, cx } from './primitives.js';
 
 export interface Column<T> {
   /** Stable key. Also the sort field when `sortable` and `sortField` is unset. */
@@ -111,8 +111,25 @@ export const DataTable = <T,>({
     );
   }
 
+  /*
+   * A refetch over rows that are already on screen — paging, sorting, a filter
+   * change. Dimming the rows alone is too quiet: on a fast connection it reads
+   * as a flicker, and on a slow one it reads as nothing happening at all, so
+   * the user clicks again. The overlay says the app is working.
+   */
+  const refetching = loading && rows.length > 0;
+
   return (
-    <div>
+    <div className="relative">
+      {refetching && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center pt-8">
+          <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-sm text-steel-600 shadow-sm ring-1 ring-steel-200">
+            <Spinner size="sm" label={null} />
+            Loading
+          </span>
+        </div>
+      )}
+
       {/* Desktop table */}
       <div className="hidden overflow-x-auto sm:block">
         <table className="min-w-full divide-y divide-steel-200">

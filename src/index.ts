@@ -8,6 +8,7 @@ export {
   EmptyState,
   ErrorState,
   Skeleton,
+  Spinner,
   StatTile,
   TONE_ICONS,
 } from './primitives.js';
@@ -23,6 +24,7 @@ export type {
   PageHeaderProps,
   StatTileProps,
   StatusBadgeProps,
+  SpinnerProps,
 } from './primitives.js';
 
 export { SlideOver, Modal, ConfirmDialog } from './overlays.js';
