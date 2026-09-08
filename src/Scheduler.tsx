@@ -80,6 +80,9 @@ const minutesFromStart = (iso: string, day: Date, dayStartHour: number): number 
   return (d.getTime() - top.getTime()) / MS_PER_MIN;
 };
 
+/** Pointer travel below this is a click, not a drag. */
+const DRAG_THRESHOLD_PX = 4;
+
 interface DragState {
   id: string;
   mode: 'move' | 'resize';
@@ -132,6 +135,8 @@ export const Scheduler = ({
     [date, dayStartHour],
   );
 
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+
   const snap = useCallback(
     (min: number) => Math.round(min / slotMinutes) * slotMinutes,
     [slotMinutes],
@@ -162,8 +167,15 @@ export const Scheduler = ({
     if (!onEventMove) return;
     e.preventDefault();
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    /*
+     * Capture on the grid, not on the block. The block is unmounted the moment
+     * the drag crosses into another column — it is redrawn from the overlay
+     * below — and capture dies with the element that holds it, which stranded
+     * the drag at the column boundary. The grid outlives every block.
+     */
+    gridRef.current?.setPointerCapture?.(e.pointerId);
     draggedRef.current = false;
+    originRef.current = { x: e.clientX, y: e.clientY };
 
     const startMin = minutesFromStart(event.start, date, dayStartHour);
     const endMin = minutesFromStart(event.end, date, dayStartHour);
@@ -183,7 +195,17 @@ export const Scheduler = ({
     if (!drag) return;
     const hit = hitTest(e.clientX, e.clientY);
     if (!hit) return;
-    draggedRef.current = true;
+
+    // A few pixels of travel while pressing is a click, not a drag. Without a
+    // threshold the smallest tremor counted as a move, which both suppressed
+    // the click that opens the visit and wrote an unchanged record back.
+    if (!draggedRef.current) {
+      const origin = originRef.current;
+      if (origin && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+      draggedRef.current = true;
+    }
 
     setDrag((d) => {
       if (!d) return d;
@@ -222,13 +244,35 @@ export const Scheduler = ({
         .filter((e) => e.resourceId === resource.id)
         .sort((a, b) => a.start.localeCompare(b.start));
 
-      // Greedy lane packing: an event takes the first lane whose last event has
-      // finished. Two appointments at the same time sit beside each other
-      // rather than hiding one another.
-      const laneEnds: number[] = [];
-      const placed = list.map((e) => {
+      /*
+       * Greedy lane packing: an event takes the first lane whose last event has
+       * finished, so two appointments at the same time sit beside each other
+       * rather than hiding one another.
+       *
+       * The width divisor is counted per *cluster* of events that actually
+       * overlap, not across the whole column. Counting it column-wide made a
+       * lone 11am visit half width because two unrelated visits collided at
+       * 2pm — it looked like it was in a conflict it had nothing to do with. A
+       * cluster ends the moment an event starts at or after everything before
+       * it has finished.
+       */
+      const placed: Array<SchedulerEvent & { lane: number; lanes: number }> = [];
+      let cluster: number[] = [];
+      let laneEnds: number[] = [];
+      let clusterEnd = -Infinity;
+
+      const closeCluster = () => {
+        const lanes = Math.max(laneEnds.length, 1);
+        for (const i of cluster) placed[i]!.lanes = lanes;
+        cluster = [];
+        laneEnds = [];
+      };
+
+      for (const e of list) {
         const s = minutesFromStart(e.start, date, dayStartHour);
         const en = minutesFromStart(e.end, date, dayStartHour);
+        if (s >= clusterEnd) closeCluster();
+
         let lane = laneEnds.findIndex((end) => end <= s);
         if (lane === -1) {
           lane = laneEnds.length;
@@ -236,13 +280,43 @@ export const Scheduler = ({
         } else {
           laneEnds[lane] = en;
         }
-        return { ...e, lane, lanes: 1 };
-      });
-      const lanes = Math.max(laneEnds.length, 1);
-      byResource.set(resource.id, placed.map((p) => ({ ...p, lanes })));
+        clusterEnd = Math.max(clusterEnd, en);
+        placed.push({ ...e, lane, lanes: 1 });
+        cluster.push(placed.length - 1);
+      }
+      closeCluster();
+
+      byResource.set(resource.id, placed);
     }
     return byResource;
   }, [events, resources, date, dayStartHour]);
+
+  const dragged = drag && draggedRef.current ? events.find((e) => e.id === drag.id) : undefined;
+  const dragColumn = dragged ? resources.findIndex((r) => r.id === drag!.resourceId) : -1;
+  const columnWidth = 100 / Math.max(resources.length, 1);
+
+  const dragOverlay =
+    dragged && drag && dragColumn >= 0 ? (
+      <div
+        className={cx(
+          'pointer-events-none absolute z-30 overflow-hidden rounded border px-1.5 py-0.5 text-xs',
+          'shadow-md opacity-90',
+          TONE_CLASSES[dragged.tone ?? 'info'],
+        )}
+        style={{
+          top: drag.startMin * pxPerMin,
+          height: Math.max((drag.endMin - drag.startMin) * pxPerMin, 16),
+          left: `${dragColumn * columnWidth}%`,
+          width: `calc(${columnWidth}% - 2px)`,
+        }}
+      >
+        <div className="truncate font-medium">{dragged.label}</div>
+        <div className="truncate opacity-75">
+          {timeLabel(new Date(toIso(drag.startMin)))}
+          {dragged.sublabel ? ` \u00b7 ${dragged.sublabel}` : ''}
+        </div>
+      </div>
+    ) : null;
 
   const dayLabel = date.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -347,9 +421,10 @@ export const Scheduler = ({
                       const endMin = dragging
                         ? drag!.endMin
                         : minutesFromStart(event.end, date, dayStartHour);
-                      // While dragging between columns, the block follows the
-                      // pointer's column rather than its stored one.
-                      if (dragging && drag!.resourceId !== resource.id) return null;
+                      // Once it is really moving it is drawn by the overlay
+                      // below instead, so that crossing a column boundary does
+                      // not unmount the thing being dragged.
+                      if (dragging && draggedRef.current) return null;
 
                       const width = 100 / event.lanes;
                       return (
@@ -410,6 +485,14 @@ export const Scheduler = ({
                     })}
                   </div>
                 ))}
+
+                {/*
+                 * The block being dragged, drawn once above every column.
+                 * Living outside the columns is what lets it cross between
+                 * them: as a child of one column it was unmounted the instant
+                 * the pointer left, taking the drag with it.
+                 */}
+                {dragOverlay}
               </div>
             </div>
           </div>
