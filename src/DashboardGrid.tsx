@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   EllipsisVerticalIcon,
   MinusSmallIcon,
+  PencilSquareIcon,
   PlusIcon,
   Squares2X2Icon,
 } from '@heroicons/react/24/outline';
@@ -44,6 +45,14 @@ export interface DashboardGridProps {
   title: (id: string) => string;
   onChange?: (cards: DashboardCard[]) => void;
   onRemove?: (id: string) => void;
+  /** Opens a card for editing. Only shown where `editable` allows it. */
+  onEdit?: (id: string) => void;
+  /**
+   * Which cards can be edited. A built-in card is defined by the app, not by
+   * the reader, so offering a pencil on one promises something that cannot be
+   * delivered — default is that nothing is editable unless this says so.
+   */
+  editable?: (id: string) => boolean;
   onAdd?: (id: string) => void;
   /** Offers "New card" under the plus. */
   onCreate?: () => void;
@@ -64,6 +73,8 @@ export const DashboardGrid = ({
   title,
   onChange,
   onRemove,
+  onEdit,
+  editable,
   onAdd,
   onCreate,
   onReset,
@@ -296,6 +307,17 @@ export const DashboardGrid = ({
                   >
                     <EllipsisVerticalIcon className="h-4 w-4" aria-hidden="true" />
                   </button>
+                  {onEdit && editable?.(card.id) && (
+                    <button
+                      type="button"
+                      title={`Edit ${label}`}
+                      aria-label={`Edit the ${label} card`}
+                      onClick={() => onEdit(card.id)}
+                      className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
                   {onRemove && (
                     <button
                       type="button"
