@@ -82,6 +82,14 @@ export { MonthCalendar, monthBounds } from './Calendar.js';
 export { DashboardGrid } from './DashboardGrid.js';
 export type { DashboardCard, DashboardGridProps, HiddenCard } from './DashboardGrid.js';
 
+export { ResourceBoard } from './ResourceBoard.js';
+export type {
+  BoardResource,
+  BoardTarget,
+  BoardAssignment,
+  ResourceBoardProps,
+} from './ResourceBoard.js';
+
 export { Scheduler } from './Scheduler.js';
 export type { SchedulerEvent, SchedulerResource, SchedulerProps } from './Scheduler.js';
 export type { CalendarEvent, MonthCalendarProps } from './Calendar.js';
