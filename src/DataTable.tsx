@@ -701,7 +701,7 @@ export const DataTable = <T,>({
                         'border-r-2 border-brand-500',
                     )}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       {canArrange && (
                         <button
                           type="button"
@@ -721,7 +721,16 @@ export const DataTable = <T,>({
                             setDragKey(column.key);
                             setDropIndex(index);
                           }}
-                          className="-ml-1 shrink-0 cursor-grab touch-none rounded text-steel-300 opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 group-hover/th:opacity-100"
+                          title={`Drag to move the ${label} column`}
+                          /*
+                           * Always visible, never hover-only. A control that
+                           * appears on hover cannot be found by someone who
+                           * does not already know it is there, which is the
+                           * whole problem with hiding an affordance — it was
+                           * reported missing the first time it shipped that
+                           * way.
+                           */
+                          className="-ml-1 shrink-0 cursor-grab touch-none rounded p-0.5 text-steel-400 transition-colors hover:bg-steel-200 hover:text-steel-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           <EllipsisVerticalIcon className="h-4 w-4" aria-hidden="true" />
                         </button>
@@ -757,7 +766,8 @@ export const DataTable = <T,>({
                           type="button"
                           onClick={() => hideColumn(column.key)}
                           aria-label={`Remove the ${label} column`}
-                          className="ml-auto shrink-0 rounded text-steel-300 opacity-0 transition-opacity hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 group-hover/th:opacity-100"
+                          title={`Remove the ${label} column`}
+                          className="ml-auto shrink-0 rounded p-0.5 text-steel-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           <MinusSmallIcon className="h-4 w-4" aria-hidden="true" />
                         </button>
@@ -774,6 +784,7 @@ export const DataTable = <T,>({
                     onClick={() => setAddOpen((open) => !open)}
                     aria-expanded={addOpen}
                     aria-label="Add a column"
+                    title="Add a column"
                     className="rounded p-0.5 text-steel-400 hover:bg-steel-200 hover:text-steel-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                   >
                     <PlusIcon className="h-4 w-4" aria-hidden="true" />
