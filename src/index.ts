@@ -58,7 +58,13 @@ export type {
 } from './fields.js';
 
 export { DataTable, Pagination, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './DataTable.js';
-export type { Column, DataTableProps, PaginationProps, SortState } from './DataTable.js';
+export type {
+  Column,
+  ColumnEdit,
+  DataTableProps,
+  PaginationProps,
+  SortState,
+} from './DataTable.js';
 
 export { KnackForm } from './KnackForm.js';
 export type {
