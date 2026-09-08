@@ -42,7 +42,8 @@ export interface ColumnEdit<T> {
   value?: (row: T) => unknown;
   /**
    * Turns what the input holds into what gets written. Defaults to a trimmed
-   * string, a Number for numeric types, and an ISO timestamp for dates.
+   * string, a Number for numeric types, the plain `YYYY-MM-DD` for a date, and
+   * an ISO timestamp for a date and time.
    */
   toValue?: (input: string, row: T) => unknown;
   /** Refuses the edit and says why. Returning a string blocks the write. */
@@ -224,7 +225,16 @@ export const DataTable = <T,>({
     else if (spec.type === 'number' || spec.type === 'currency')
       value = input.trim() === '' ? null : Number(input);
     else if (spec.type === 'boolean') value = input === 'true';
-    else if (spec.type === 'date' || spec.type === 'date_time')
+    else if (spec.type === 'date')
+      /*
+       * Passed through exactly as the input holds it. A calendar date has no
+       * timezone in it, and routing one through Date and back gives it one —
+       * `new Date('2026-09-15')` is UTC midnight, which is the 14th for
+       * everyone west of Greenwich. The date the user picked is the date that
+       * gets written.
+       */
+      value = input === '' ? null : input;
+    else if (spec.type === 'date_time')
       value = input === '' ? null : new Date(input).toISOString();
     else value = input.trim();
 
