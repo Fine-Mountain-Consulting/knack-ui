@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Button, cx } from './primitives.js';
+import { Button, Spinner, cx } from './primitives.js';
 
 /**
  * A resource-lane day scheduler: one column per person, a time axis down the
@@ -45,6 +45,12 @@ export interface SchedulerProps {
   /** Clicking empty space — "book something here". */
   onSlotClick?: (slot: { start: string; end: string; resourceId: string }) => void;
   loading?: boolean;
+  /**
+   * Events with a write in flight. They render where the user put them, with a
+   * spinner, rather than snapping back to the server's position and forward
+   * again when it catches up.
+   */
+  busyIds?: ReadonlySet<string>;
   /** Hour the grid starts and ends, 0–24. */
   dayStartHour?: number;
   dayEndHour?: number;
@@ -93,6 +99,7 @@ export const Scheduler = ({
   onEventClick,
   onSlotClick,
   loading = false,
+  busyIds,
   dayStartHour = 7,
   dayEndHour = 19,
   slotMinutes = 15,
@@ -366,6 +373,10 @@ export const Scheduler = ({
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
                             TONE_CLASSES[event.tone ?? 'info'],
                             dragging ? 'z-20 cursor-grabbing opacity-90 shadow-md' : 'cursor-grab',
+                            // Saving is signalled by the spinner, not by fading
+                            // the block out — a half-transparent appointment
+                            // reads as cancelled rather than as in progress.
+                            busyIds?.has(event.id) && 'ring-1 ring-brand-400',
                           )}
                           style={{
                             top: startMin * pxPerMin,
@@ -374,7 +385,14 @@ export const Scheduler = ({
                             width: `calc(${width}% - 2px)`,
                           }}
                         >
-                          <div className="truncate font-medium">{event.label}</div>
+                          <div className="flex items-center gap-1">
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {event.label}
+                            </span>
+                            {busyIds?.has(event.id) && (
+                              <Spinner size="sm" label={`Saving ${event.label}`} />
+                            )}
+                          </div>
                           <div className="truncate opacity-75">
                             {timeLabel(new Date(dragging ? toIso(startMin) : event.start))}
                             {event.sublabel ? ` · ${event.sublabel}` : ''}
