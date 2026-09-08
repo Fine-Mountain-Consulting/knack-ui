@@ -69,6 +69,9 @@ export type {
 } from './KnackForm.js';
 
 export { AppShell, AttributionFooter, FMC_URL } from './AppShell.js';
+
+export { MonthCalendar, monthBounds } from './Calendar.js';
+export type { CalendarEvent, MonthCalendarProps } from './Calendar.js';
 export type { AppShellProps, NavItem, NavSection } from './AppShell.js';
 
 export { Tabs, RecordDetail, SearchInput, useToasts, ToastRegion } from './misc.js';
