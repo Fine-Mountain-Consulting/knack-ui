@@ -61,6 +61,7 @@ export { DataTable, Pagination, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './D
 export type {
   Column,
   ColumnEdit,
+  ColumnLayout,
   DataTableProps,
   PaginationProps,
   SortState,

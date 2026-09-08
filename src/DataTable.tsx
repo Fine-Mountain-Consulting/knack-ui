@@ -1,5 +1,6 @@
 import {
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type KeyboardEvent,
@@ -11,7 +12,10 @@ import {
   ChevronRightIcon,
   ChevronUpDownIcon,
   ChevronUpIcon,
+  EllipsisVerticalIcon,
+  MinusSmallIcon,
   PencilSquareIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 import { Button, EmptyState, ErrorState, Skeleton, Spinner, cx } from './primitives.js';
 
@@ -74,6 +78,21 @@ export interface Column<T> {
   groupValue?: (row: T) => string;
 }
 
+/**
+ * Which columns a reader wants, and in what order.
+ *
+ * Kept as keys rather than as columns so it survives the app changing: a
+ * column added to the code since this was saved appears at the end rather than
+ * the saved layout freezing the grid to whatever shipped that month, and a
+ * column removed from the code is simply absent rather than an error.
+ */
+export interface ColumnLayout {
+  /** Column keys, in display order. Unlisted columns follow, in code order. */
+  order?: string[];
+  /** Column keys the reader has taken off the grid. */
+  hidden?: string[];
+}
+
 export interface SortState {
   field: string;
   order: 'asc' | 'desc';
@@ -125,6 +144,14 @@ export interface DataTableProps<T> {
    */
   groupBy?: string | null;
   onGroupByChange?: (key: string | null) => void;
+
+  /**
+   * Reader-chosen column order and visibility. Supplying `onLayoutChange`
+   * turns on the controls: a grip to drag a header, a minus to take a column
+   * off, and a plus at the end of the row to put one back.
+   */
+  layout?: ColumnLayout;
+  onLayoutChange?: (next: ColumnLayout) => void;
   /**
    * Draws the group-by control above the grid. Set false when the caller
    * already has a controls row of its own — a list header, say — so the
@@ -171,9 +198,106 @@ export const DataTable = <T,>({
   groupBy = null,
   onGroupByChange,
   showGroupControl = true,
+  layout,
+  onLayoutChange,
 }: DataTableProps<T>) => {
-  const cardColumns = useMemo(() => columns.filter((c) => c.inCard !== false), [columns]);
+  const canArrange = Boolean(onLayoutChange);
+  const hiddenKeys = useMemo(() => new Set(layout?.hidden ?? []), [layout?.hidden]);
+
+  /**
+   * The saved order first, then anything the saved order has never heard of.
+   * A column added to the app since a reader last arranged their grid appears
+   * rather than vanishing.
+   */
+  const arranged = useMemo(() => {
+    const byKey = new Map(columns.map((c) => [c.key, c]));
+    const seen = new Set<string>();
+    const out: Array<Column<T>> = [];
+    for (const key of layout?.order ?? []) {
+      const column = byKey.get(key);
+      if (column && !seen.has(key)) {
+        out.push(column);
+        seen.add(key);
+      }
+    }
+    for (const column of columns) if (!seen.has(column.key)) out.push(column);
+    return out;
+  }, [columns, layout?.order]);
+
+  const visible = useMemo(() => {
+    const shown = arranged.filter((c) => !hiddenKeys.has(c.key));
+    // A grid with no columns is a bug, not a preference. If a saved layout
+    // would hide everything — an app whose columns were all renamed, say —
+    // fall back to showing them rather than rendering an empty table.
+    return shown.length > 0 ? shown : arranged;
+  }, [arranged, hiddenKeys]);
+
+  const hiddenColumns = useMemo(
+    () => arranged.filter((c) => hiddenKeys.has(c.key) && !visible.includes(c)),
+    [arranged, hiddenKeys, visible],
+  );
+
+  const cardColumns = useMemo(() => visible.filter((c) => c.inCard !== false), [visible]);
   const groupable = useMemo(() => columns.filter((c) => c.groupValue), [columns]);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const headerEls = useRef(new Map<string, HTMLTableCellElement | null>());
+
+  const emitLayout = (nextVisible: string[], nextHidden: Set<string>) =>
+    onLayoutChange?.({
+      // Hidden keys trail the order, so putting one back puts it at the end —
+      // where the reader is looking when they add it, rather than somewhere in
+      // the middle they have to hunt for.
+      order: [...nextVisible, ...arranged.map((c) => c.key).filter((k) => nextHidden.has(k))],
+      hidden: [...nextHidden],
+    });
+
+  const hideColumn = (key: string) => {
+    if (visible.length <= 1) return;
+    const nextHidden = new Set(hiddenKeys).add(key);
+    emitLayout(
+      visible.filter((c) => c.key !== key).map((c) => c.key),
+      nextHidden,
+    );
+  };
+
+  const showColumn = (key: string) => {
+    const nextHidden = new Set(hiddenKeys);
+    nextHidden.delete(key);
+    emitLayout([...visible.map((c) => c.key), key], nextHidden);
+  };
+
+  const onHeaderPointerMove = (e: { clientX: number }) => {
+    if (!dragKey) return;
+    let index = 0;
+    visible.forEach((column, i) => {
+      const el = headerEls.current.get(column.key);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      // Past a header's midpoint means the column lands after it.
+      if (e.clientX > rect.left + rect.width / 2) index = i + 1;
+    });
+    setDropIndex(index);
+  };
+
+  const endHeaderDrag = () => {
+    if (dragKey && dropIndex !== null && onLayoutChange) {
+      const keys = visible.map((c) => c.key);
+      const from = keys.indexOf(dragKey);
+      // Lifting the column out shifts everything after it down one, so a drop
+      // to the right of where it started is one place further than it looks.
+      const to = dropIndex > from ? dropIndex - 1 : dropIndex;
+      if (from !== -1 && to !== from) {
+        keys.splice(from, 1);
+        keys.splice(to, 0, dragKey);
+        emitLayout(keys, hiddenKeys);
+      }
+    }
+    setDragKey(null);
+    setDropIndex(null);
+  };
 
   const [editing, setEditing] = useState<{ rowId: string; key: string; draft: string } | null>(
     null,
@@ -400,7 +524,7 @@ export const DataTable = <T,>({
           loading && 'opacity-60',
         )}
       >
-        {columns.map((column) => {
+        {visible.map((column) => {
           const spec = editableColumn(column, row);
           const open = editing?.rowId === rowId && editing.key === column.key;
           const openEditor = () => {
@@ -453,6 +577,8 @@ export const DataTable = <T,>({
             {rowActions(row)}
           </td>
         )}
+        {/* Matches the add-column header cell, so the columns stay aligned. */}
+        {canArrange && <td className="px-2 py-3" />}
       </tr>
     );
   };
@@ -548,50 +674,162 @@ export const DataTable = <T,>({
       <div className="hidden overflow-x-auto sm:block">
         <table className="min-w-full divide-y divide-steel-200">
           <thead className="bg-steel-50">
-            <tr>
-              {columns.map((column) => {
+            <tr onPointerMove={onHeaderPointerMove} onPointerUp={endHeaderDrag} onPointerCancel={endHeaderDrag}>
+              {visible.map((column, index) => {
                 const field = column.sortField ?? column.key;
                 const active = sort?.field === field;
+                const label = typeof column.header === 'string' ? column.header : column.key;
                 return (
                   <th
                     key={column.key}
                     scope="col"
+                    ref={(el) => {
+                      headerEls.current.set(column.key, el);
+                    }}
                     aria-sort={
                       active ? (sort!.order === 'asc' ? 'ascending' : 'descending') : undefined
                     }
                     className={cx(
-                      'px-4 py-3 text-xs font-medium uppercase tracking-wide text-steel-500',
+                      'group/th px-4 py-3 text-xs font-medium uppercase tracking-wide text-steel-500',
                       ALIGN[column.align ?? 'left'],
                       column.className,
+                      dragKey === column.key && 'opacity-40',
+                      // Where the column would land if the pointer let go now.
+                      dropIndex === index && 'border-l-2 border-brand-500',
+                      dropIndex === visible.length &&
+                        index === visible.length - 1 &&
+                        'border-r-2 border-brand-500',
                     )}
                   >
-                    {column.sortable && onSortChange ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleSort(column)}
-                        className="inline-flex items-center gap-1 rounded transition-colors hover:text-steel-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                      >
-                        {column.header}
-                        {active ? (
-                          sort!.order === 'asc' ? (
-                            <ChevronUpIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <div className="flex items-center gap-1">
+                      {canArrange && (
+                        <button
+                          type="button"
+                          aria-label={`Reorder the ${label} column`}
+                          /*
+                           * A grip of its own, rather than dragging the whole
+                           * header: the header is already the sort control, and
+                           * one element cannot be both without every sort
+                           * looking like a failed drag.
+                           */
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            (e.currentTarget.closest('tr') as HTMLElement | null)?.setPointerCapture?.(
+                              e.pointerId,
+                            );
+                            setDragKey(column.key);
+                            setDropIndex(index);
+                          }}
+                          className="-ml-1 shrink-0 cursor-grab touch-none rounded text-steel-300 opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 group-hover/th:opacity-100"
+                        >
+                          <EllipsisVerticalIcon className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      )}
+
+                      {column.sortable && onSortChange ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(column)}
+                          className="inline-flex items-center gap-1 rounded transition-colors hover:text-steel-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                        >
+                          {column.header}
+                          {active ? (
+                            sort!.order === 'asc' ? (
+                              <ChevronUpIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            ) : (
+                              <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            )
                           ) : (
-                            <ChevronDownIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                          )
-                        ) : (
-                          <ChevronUpDownIcon
-                            className="h-3.5 w-3.5 text-steel-400"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </button>
-                    ) : (
-                      column.header
-                    )}
+                            <ChevronUpDownIcon
+                              className="h-3.5 w-3.5 text-steel-400"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </button>
+                      ) : (
+                        <span>{column.header}</span>
+                      )}
+
+                      {/* Never the last one: a grid with no columns is a bug. */}
+                      {canArrange && visible.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => hideColumn(column.key)}
+                          aria-label={`Remove the ${label} column`}
+                          className="ml-auto shrink-0 rounded text-steel-300 opacity-0 transition-opacity hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 group-hover/th:opacity-100"
+                        >
+                          <MinusSmallIcon className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
                   </th>
                 );
               })}
               {rowActions && <th scope="col" className="w-px px-4 py-3" />}
+              {canArrange && (
+                <th scope="col" className="relative w-px px-2 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen((open) => !open)}
+                    aria-expanded={addOpen}
+                    aria-label="Add a column"
+                    className="rounded p-0.5 text-steel-400 hover:bg-steel-200 hover:text-steel-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    <PlusIcon className="h-4 w-4" aria-hidden="true" />
+                  </button>
+
+                  {addOpen && (
+                    <>
+                      {/* Catches the next click anywhere, which is how a menu
+                          is expected to close. */}
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        onClick={() => setAddOpen(false)}
+                        className="fixed inset-0 z-20 cursor-default"
+                      />
+                      <div className="absolute right-0 z-30 mt-1 w-60 rounded-lg border border-steel-200 bg-white py-1 text-left shadow-lg">
+                        {hiddenColumns.length === 0 ? (
+                          <p className="px-3 py-2 text-xs font-normal normal-case tracking-normal text-steel-500">
+                            Every column is already on the grid.
+                          </p>
+                        ) : (
+                          hiddenColumns.map((column) => (
+                            <button
+                              key={column.key}
+                              type="button"
+                              onClick={() => {
+                                showColumn(column.key);
+                                setAddOpen(false);
+                              }}
+                              className="block w-full px-3 py-1.5 text-left text-sm font-normal normal-case tracking-normal text-steel-700 hover:bg-steel-50"
+                            >
+                              {typeof column.header === 'string' ? column.header : column.key}
+                            </button>
+                          ))
+                        )}
+                        {Boolean(layout?.order?.length || layout?.hidden?.length) && (
+                          <>
+                            <div className="my-1 border-t border-steel-100" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onLayoutChange?.({});
+                                setAddOpen(false);
+                              }}
+                              className="block w-full px-3 py-1.5 text-left text-sm font-normal normal-case tracking-normal text-steel-600 hover:bg-steel-50"
+                            >
+                              Reset to the default columns
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </th>
+              )}
             </tr>
           </thead>
 
@@ -599,12 +837,13 @@ export const DataTable = <T,>({
             {loading && rows.length === 0
               ? Array.from({ length: skeletonRows }, (_, i) => (
                   <tr key={`skeleton-${i}`}>
-                    {columns.map((column) => (
+                    {visible.map((column) => (
                       <td key={column.key} className="px-4 py-3">
                         <Skeleton className="h-4 w-full max-w-[12rem]" />
                       </td>
                     ))}
                     {rowActions && <td className="px-4 py-3" />}
+                    {canArrange && <td className="px-2 py-3" />}
                   </tr>
                 ))
               : groups
@@ -614,7 +853,9 @@ export const DataTable = <T,>({
                       <tr key={`group-${label}`} className="bg-steel-100/70">
                         <th
                           scope="colgroup"
-                          colSpan={columns.length + (rowActions ? 1 : 0)}
+                          colSpan={
+                            visible.length + (rowActions ? 1 : 0) + (canArrange ? 1 : 0)
+                          }
                           className="px-4 py-2 text-left"
                         >
                           <button
