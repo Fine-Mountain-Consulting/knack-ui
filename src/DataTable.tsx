@@ -136,6 +136,13 @@ export interface DataTableProps<T> {
   onCellEdit?: (change: { row: T; column: Column<T>; value: unknown }) => void;
   /** Row ids with a write in flight. Their edited cells show a spinner. */
   savingIds?: ReadonlySet<string>;
+  /**
+   * Row ids being deleted. The row stays put, outlined in red with a spinner,
+   * until the server confirms — so the record is visibly on its way out rather
+   * than silently gone, and a failed delete puts back a row the reader can
+   * still see rather than one they have to go looking for.
+   */
+  deletingIds?: ReadonlySet<string>;
 
   /**
    * Group-by. Grouping is applied to the rows currently loaded, which with
@@ -195,6 +202,7 @@ export const DataTable = <T,>({
   skeletonRows = 5,
   onCellEdit,
   savingIds,
+  deletingIds,
   groupBy = null,
   onGroupByChange,
   showGroupControl = true,
@@ -514,14 +522,24 @@ export const DataTable = <T,>({
 
   const renderRow = (row: T) => {
     const rowId = getRowId(row);
+    const deleting = deletingIds?.has(rowId) ?? false;
     return (
       <tr
         key={rowId}
-        onClick={onRowClick ? () => onRowClick(row) : undefined}
+        // A row on its way out is not a row to open or edit.
+        onClick={onRowClick && !deleting ? () => onRowClick(row) : undefined}
+        aria-busy={deleting || undefined}
         className={cx(
           'transition-colors',
-          onRowClick && 'cursor-pointer hover:bg-brand-50/50',
+          onRowClick && !deleting && 'cursor-pointer hover:bg-brand-50/50',
           loading && 'opacity-60',
+          /*
+           * An outline rather than a ring: `ring` is a box-shadow, and a
+           * box-shadow on a table row is not painted when the borders are
+           * collapsed, which they are here. The red wash carries the meaning
+           * on its own if a browser declines the outline.
+           */
+          deleting && 'bg-red-50 outline outline-2 -outline-offset-2 outline-red-500',
         )}
       >
         {visible.map((column) => {
@@ -574,7 +592,14 @@ export const DataTable = <T,>({
         {rowActions && (
           /* Stops a row action from also triggering onRowClick. */
           <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-            {rowActions(row)}
+            {deleting ? (
+              <span className="inline-flex items-center gap-1.5 text-sm text-red-700">
+                <Spinner size="sm" label={null} />
+                Deleting
+              </span>
+            ) : (
+              rowActions(row)
+            )}
           </td>
         )}
         {/* Matches the add-column header cell, so the columns stay aligned. */}
@@ -905,7 +930,14 @@ export const DataTable = <T,>({
               </li>
             ))
           : rows.map((row) => (
-              <li key={getRowId(row)}>
+              <li
+                key={getRowId(row)}
+                className={cx(
+                  deletingIds?.has(getRowId(row)) &&
+                    'bg-red-50 outline outline-2 -outline-offset-2 outline-red-500',
+                )}
+                aria-busy={deletingIds?.has(getRowId(row)) || undefined}
+              >
                 <div
                   role={onRowClick ? 'button' : undefined}
                   tabIndex={onRowClick ? 0 : undefined}
@@ -950,7 +982,14 @@ export const DataTable = <T,>({
                   ))}
                   {rowActions && (
                     <div className="mt-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
-                      {rowActions(row)}
+                      {deletingIds?.has(getRowId(row)) ? (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-red-700">
+                          <Spinner size="sm" label={null} />
+                          Deleting
+                        </span>
+                      ) : (
+                        rowActions(row)
+                      )}
                     </div>
                   )}
                 </div>
