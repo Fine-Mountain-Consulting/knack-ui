@@ -125,6 +125,13 @@ export interface DataTableProps<T> {
    */
   groupBy?: string | null;
   onGroupByChange?: (key: string | null) => void;
+  /**
+   * Draws the group-by control above the grid. Set false when the caller
+   * already has a controls row of its own — a list header, say — so the
+   * control sits with search and the filters rather than on a line by itself.
+   * Grouping still applies; only the control moves.
+   */
+  showGroupControl?: boolean;
 }
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' } as const;
@@ -163,6 +170,7 @@ export const DataTable = <T,>({
   savingIds,
   groupBy = null,
   onGroupByChange,
+  showGroupControl = true,
 }: DataTableProps<T>) => {
   const cardColumns = useMemo(() => columns.filter((c) => c.inCard !== false), [columns]);
   const groupable = useMemo(() => columns.filter((c) => c.groupValue), [columns]);
@@ -505,7 +513,7 @@ export const DataTable = <T,>({
         </div>
       )}
 
-      {onGroupByChange && groupable.length > 0 && (
+      {showGroupControl && onGroupByChange && groupable.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-steel-200 px-4 py-2">
           <label className="flex items-center gap-1.5 text-sm text-steel-500">
             Group by
