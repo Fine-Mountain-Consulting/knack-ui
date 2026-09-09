@@ -608,6 +608,17 @@ export const ResourceBoard = ({
                         {list.map((assignment) => {
                     const resource = resources.find((r) => r.id === assignment.resourceId);
                     const busy = busyIds?.has(assignment.id);
+                    /*
+                     * Whether one more could even exist. Refusing after the
+                     * click was the wrong way round: a button that looks
+                     * available and then explains itself is a worse answer than
+                     * one that was never offered.
+                     */
+                    const committed = resource
+                      ? peakUse(assignment.resourceId, target, assignment.id)
+                      : 0;
+                    const atCeiling =
+                      !resource || committed + assignment.quantity >= resource.total;
                     return (
                       <li
                         key={assignment.id}
@@ -618,6 +629,11 @@ export const ResourceBoard = ({
                       >
                         <span className="min-w-0 flex-1 truncate">
                           {resource?.name ?? assignment.label ?? 'Resource'}
+                          {atCeiling && resource && (
+                            <span className="ml-1.5 text-xs font-normal text-steel-400">
+                              all {resource.total} committed
+                            </span>
+                          )}
                         </span>
 
                         {onChangeQuantity && (
@@ -641,23 +657,19 @@ export const ResourceBoard = ({
                             <button
                               type="button"
                               aria-label="One more"
-                              disabled={busy}
+                              disabled={busy || atCeiling}
+                              title={
+                                atCeiling && resource
+                                  ? `All ${resource.total} of ${resource.name} ${
+                                      resource.total === 1 ? 'is' : 'are'
+                                    } committed at this time.`
+                                  : 'One more'
+                              }
                               onClick={() => {
-                                const resourceDef = resources.find(
-                                  (r) => r.id === assignment.resourceId,
-                                );
-                                if (!resourceDef) return;
-                                const inUse = peakUse(assignment.resourceId, target, assignment.id);
-                                if (inUse + assignment.quantity + 1 > resourceDef.total) {
-                                  setRefusal(
-                                    `There are only ${resourceDef.total} of ${resourceDef.name}.`,
-                                  );
-                                  return;
-                                }
                                 setRefusal(null);
                                 onChangeQuantity(assignment.id, assignment.quantity + 1);
                               }}
-                              className="rounded px-1.5 text-steel-500 hover:bg-steel-100 disabled:opacity-40"
+                              className="rounded px-1.5 text-steel-500 hover:bg-steel-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                             >
                               +
                             </button>
