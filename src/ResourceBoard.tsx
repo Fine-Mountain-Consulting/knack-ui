@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Spinner } from './primitives.js';
 import { cx } from './primitives.js';
 
 /**
@@ -51,7 +52,16 @@ export interface ResourceBoardProps {
   resources: BoardResource[];
   targets: BoardTarget[];
   assignments: BoardAssignment[];
-  onAssign: (change: { resourceId: string; targetId: string; quantity: number }) => void;
+  /**
+   * Returning a promise is worth doing: the board shows the resource sitting in
+   * the target, greyed with a spinner, until it settles. Without that the drop
+   * looks like it did nothing until the refetch lands.
+   */
+  onAssign: (change: {
+    resourceId: string;
+    targetId: string;
+    quantity: number;
+  }) => void | Promise<unknown>;
   onChangeQuantity?: (assignmentId: string, quantity: number) => void;
   onUnassign?: (assignmentId: string) => void;
   onTargetClick?: (targetId: string) => void;
@@ -77,6 +87,12 @@ export const ResourceBoard = ({
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  /** Where the pointer is, so the dragged card can follow it. */
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  /** Drops that have been made but not yet confirmed by the server. */
+  const [placing, setPlacing] = useState<
+    Array<{ key: string; resourceId: string; targetId: string }>
+  >([]);
   const targetEls = useRef(new Map<string, HTMLElement | null>());
 
   const byTarget = useMemo(() => {
@@ -144,8 +160,23 @@ export const ResourceBoard = ({
     }
 
     setRefusal(null);
-    if (already && onChangeQuantity) onChangeQuantity(already.id, wanted);
-    else onAssign({ resourceId, targetId: target.id, quantity: 1 });
+
+    if (already && onChangeQuantity) {
+      onChangeQuantity(already.id, wanted);
+      return;
+    }
+
+    /*
+     * Shown in place immediately, with a spinner, and cleared only when the
+     * caller's write settles. A drop that produces nothing on screen until a
+     * refetch arrives reads as a drop that did not work, and the second attempt
+     * is how duplicates get made.
+     */
+    const key = `placing:${resourceId}:${target.id}:${Date.now()}`;
+    setPlacing((prev) => [...prev, { key, resourceId, targetId: target.id }]);
+    void Promise.resolve(onAssign({ resourceId, targetId: target.id, quantity: 1 })).finally(() =>
+      setPlacing((prev) => prev.filter((p) => p.key !== key)),
+    );
   };
 
   const groups = useMemo(() => {
@@ -160,6 +191,7 @@ export const ResourceBoard = ({
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
+    setPointer({ x: e.clientX, y: e.clientY });
     let hit: string | null = null;
     for (const target of targets) {
       const el = targetEls.current.get(target.id);
@@ -180,6 +212,7 @@ export const ResourceBoard = ({
     }
     setDragging(null);
     setOver(null);
+    setPointer(null);
   };
 
   return (
@@ -189,6 +222,21 @@ export const ResourceBoard = ({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
+      {/*
+        The card being dragged, following the pointer. Fixed to the viewport and
+        inert, so it never becomes its own drop target or blocks the one
+        underneath. Without it a drag is invisible: the pool item dims and
+        nothing else moves, which does not read as carrying anything.
+      */}
+      {dragging && pointer && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-brand-400 bg-white px-2.5 py-2 text-sm font-medium text-steel-800 shadow-lg"
+          style={{ left: pointer.x, top: pointer.y }}
+        >
+          {resources.find((r) => r.id === dragging)?.name ?? 'Resource'}
+        </div>
+      )}
+
       {/* The pool */}
       <div className="lg:w-72 lg:shrink-0">
         <div className="rounded-lg bg-white p-4 shadow-sm">
@@ -305,11 +353,25 @@ export const ResourceBoard = ({
                 </div>
 
                 <ul className="mt-3 space-y-1.5">
-                  {placed.length === 0 && (
+                  {placed.length === 0 && placing.every((p) => p.targetId !== target.id) && (
                     <li className="rounded border border-dashed border-steel-300 px-2.5 py-3 text-center text-xs text-steel-400">
                       Drag a resource here
                     </li>
                   )}
+
+                  {placing
+                    .filter((p) => p.targetId === target.id)
+                    .map((p) => (
+                      <li
+                        key={p.key}
+                        className="flex items-center gap-2 rounded border border-brand-300 bg-brand-50/50 px-2.5 py-1.5 text-sm text-steel-600"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {resources.find((r) => r.id === p.resourceId)?.name ?? 'Resource'}
+                        </span>
+                        <Spinner size="sm" label="Assigning" />
+                      </li>
+                    ))}
 
                   {placed.map((assignment) => {
                     const resource = resources.find((r) => r.id === assignment.resourceId);
