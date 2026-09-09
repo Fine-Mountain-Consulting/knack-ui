@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { Spinner } from './primitives.js';
 import { cx } from './primitives.js';
 
@@ -179,15 +184,33 @@ export const ResourceBoard = ({
     );
   };
 
-  const groups = useMemo(() => {
+  /*
+   * Anything fully committed drops out of its category and into "Assigned",
+   * which is closed to begin with. The pool is a list of what can still be
+   * used; a dozen greyed rows for things that cannot be dragged anywhere is
+   * noise between the reader and the ones that can.
+   *
+   * Out of service is deliberately not the same thing and stays where it is:
+   * it has not been assigned to anything, and filing it under "Assigned" would
+   * say something untrue about where the van went.
+   */
+  const { groups, spent } = useMemo(() => {
     const map = new Map<string, BoardResource[]>();
+    const used: BoardResource[] = [];
     for (const r of resources) {
+      if (!r.unavailable && remaining(r) <= 0) {
+        used.push(r);
+        continue;
+      }
       const list = map.get(r.group);
       if (list) list.push(r);
       else map.set(r.group, [r]);
     }
-    return [...map.entries()];
-  }, [resources]);
+    return { groups: [...map.entries()], spent: used };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resources, assignments, targets]);
+
+  const [assignedOpen, setAssignedOpen] = useState(false);
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
@@ -250,6 +273,12 @@ export const ResourceBoard = ({
               <p className="text-sm text-steel-500">No resources have been set up yet.</p>
             )}
 
+            {groups.length === 0 && spent.length > 0 && (
+              <p className="text-sm text-steel-500">
+                Everything is committed. Open “Assigned” below to see where.
+              </p>
+            )}
+
             {groups.map(([group, list]) => (
               <div key={group}>
                 <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-steel-400">
@@ -304,6 +333,46 @@ export const ResourceBoard = ({
                 </ul>
               </div>
             ))}
+
+            {spent.length > 0 && (
+              <div className="border-t border-steel-200 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setAssignedOpen((open) => !open)}
+                  aria-expanded={assignedOpen}
+                  className="flex w-full items-center gap-1.5 rounded text-xs font-medium uppercase tracking-wide text-steel-500 hover:text-steel-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  {assignedOpen ? (
+                    <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  Assigned
+                  <span className="font-normal normal-case tabular-nums text-steel-400">
+                    ({spent.length})
+                  </span>
+                </button>
+
+                {assignedOpen && (
+                  <ul className="mt-2 space-y-1.5">
+                    {spent.map((resource) => (
+                      <li
+                        key={resource.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-steel-200 bg-steel-50 px-2.5 py-2 text-sm text-steel-500"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{resource.name}</span>
+                          <span className="block truncate text-xs">{resource.group}</span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-steel-200 px-2 py-0.5 text-xs font-medium tabular-nums">
+                          0/{resource.total}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -325,6 +394,16 @@ export const ResourceBoard = ({
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {targets.map((target) => {
             const placed = byTarget.get(target.id) ?? [];
+            const placedByGroup = (() => {
+              const map = new Map<string, BoardAssignment[]>();
+              for (const a of placed) {
+                const group = resources.find((r) => r.id === a.resourceId)?.group ?? 'Other';
+                const list = map.get(group);
+                if (list) list.push(a);
+                else map.set(group, [a]);
+              }
+              return [...map.entries()];
+            })();
             return (
               <div
                 key={target.id}
@@ -373,7 +452,15 @@ export const ResourceBoard = ({
                       </li>
                     ))}
 
-                  {placed.map((assignment) => {
+                  {placedByGroup.map(([group, list]) => (
+                    <li key={group}>
+                      {/* The category, so a long list reads as "two vans and a
+                          room" rather than as ten unrelated lines. */}
+                      <p className="mb-1 mt-1 text-xs font-medium uppercase tracking-wide text-steel-400">
+                        {group}
+                      </p>
+                      <ul className="space-y-1.5">
+                        {list.map((assignment) => {
                     const resource = resources.find((r) => r.id === assignment.resourceId);
                     const busy = busyIds?.has(assignment.id);
                     return (
@@ -445,7 +532,10 @@ export const ResourceBoard = ({
                         )}
                       </li>
                     );
-                  })}
+                        })}
+                      </ul>
+                    </li>
+                  ))}
                 </ul>
               </div>
             );
