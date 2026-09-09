@@ -278,7 +278,17 @@ export const ResourceBoard = ({
 
       {/* The pool */}
       <div className="lg:w-72 lg:shrink-0">
-        <div className="rounded-lg bg-white p-4 shadow-sm">
+        <div
+          className={cx(
+            'rounded-lg bg-white p-4 shadow-sm transition-opacity',
+            // Nothing here is actionable until an event is chosen, and the
+            // numbers do not mean what they appear to mean either. Greying the
+            // card says both at once, rather than offering a live-looking list
+            // that refuses every drag.
+            !focused && 'opacity-60',
+          )}
+          aria-disabled={!focused || undefined}
+        >
           <h2 className="text-sm font-semibold text-steel-900">Resources</h2>
           {/*
             The label has to change with the question. "Still free" is a lie
@@ -290,8 +300,9 @@ export const ResourceBoard = ({
               <span className="font-medium text-steel-700">{focused.title}</span>. Drag one over.
             </p>
           ) : (
-            <p className="mt-0.5 text-xs text-steel-500">
-              How many exist. Choose an event to see what is free at that time.
+            <p className="mt-0.5 rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+              Tick an event to see what is free at that time. These are totals, not
+              availability.
             </p>
           )}
 
@@ -322,7 +333,9 @@ export const ResourceBoard = ({
                           tabIndex={0}
                           aria-label={`${resource.name}, ${left} of ${resource.total} free`}
                           onPointerDown={(e) => {
-                            if (none) return;
+                            // Nothing is droppable until an event is chosen, so
+                            // nothing is draggable either.
+                            if (none || !focused) return;
                             e.preventDefault();
                             (e.currentTarget.closest('div[class*="flex-col"]') as HTMLElement | null)
                               ?.setPointerCapture?.(e.pointerId);
@@ -333,7 +346,9 @@ export const ResourceBoard = ({
                             'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-sm',
                             none
                               ? 'cursor-not-allowed border-steel-200 bg-steel-50 text-steel-400'
-                              : 'cursor-grab border-steel-300 bg-white text-steel-800 hover:border-brand-400 hover:bg-brand-50/40',
+                              : focused
+                                ? 'cursor-grab border-steel-300 bg-white text-steel-800 hover:border-brand-400 hover:bg-brand-50/40'
+                                : 'cursor-default border-steel-200 bg-white text-steel-500',
                             dragging === resource.id && 'opacity-50 ring-2 ring-brand-400',
                           )}
                         >
@@ -348,10 +363,16 @@ export const ResourceBoard = ({
                           <span
                             className={cx(
                               'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
-                              none ? 'bg-steel-200 text-steel-500' : 'bg-brand-100 text-brand-700',
+                              none
+                                ? 'bg-steel-200 text-steel-500'
+                                : focused
+                                  ? 'bg-brand-100 text-brand-700'
+                                  : 'bg-steel-100 text-steel-500',
                             )}
                           >
-                            {left}/{resource.total}
+                            {/* Without an event there is no "of" to report —
+                                showing 3/3 would read as "all three free". */}
+                            {focused ? `${left}/${resource.total}` : resource.total}
                           </span>
                         </div>
                       </li>
@@ -447,28 +468,35 @@ export const ResourceBoard = ({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     {/*
-                      Selecting the event is the primary act here, because the
-                      pool cannot answer anything until one is chosen. Opening
-                      the record is the secondary one and gets its own link.
+                      An explicit checkbox, not a clickable title. Choosing an
+                      event is what makes the pool mean anything, and a control
+                      that important cannot be something a reader has to guess
+                      is there — the title version was reported as "not sure how
+                      to choose an event", which is the only review that counts.
+                      Exclusive despite being a checkbox: availability is
+                      answered for one event at a time.
                     */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onFocusTarget?.(focusedTargetId === target.id ? null : target.id)
-                      }
-                      aria-pressed={focusedTargetId === target.id}
-                      className="truncate text-left text-sm font-semibold text-steel-900 hover:text-brand-700"
-                    >
-                      {target.title}
-                    </button>
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={focusedTargetId === target.id}
+                        onChange={() =>
+                          onFocusTarget?.(focusedTargetId === target.id ? null : target.id)
+                        }
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-steel-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+                      />
+                      <span className="truncate text-sm font-semibold text-steel-900">
+                        {target.title}
+                      </span>
+                    </label>
                     {target.subtitle && (
-                      <p className="truncate text-xs text-steel-500">{target.subtitle}</p>
+                      <p className="ml-6 truncate text-xs text-steel-500">{target.subtitle}</p>
                     )}
                     {onTargetClick && (
                       <button
                         type="button"
                         onClick={() => onTargetClick(target.id)}
-                        className="mt-0.5 text-xs font-medium text-brand-600 hover:underline"
+                        className="ml-6 mt-0.5 text-xs font-medium text-brand-600 hover:underline"
                       >
                         Open event →
                       </button>
@@ -477,7 +505,7 @@ export const ResourceBoard = ({
 
                   {focusedTargetId === target.id && (
                     <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">
-                      Availability shown
+                      Assigning to this
                     </span>
                   )}
                 </div>
