@@ -70,6 +70,16 @@ export interface ResourceBoardProps {
   onChangeQuantity?: (assignmentId: string, quantity: number) => void;
   onUnassign?: (assignmentId: string) => void;
   onTargetClick?: (targetId: string) => void;
+  /**
+   * The event availability is being judged against.
+   *
+   * This is not a convenience. "How many are free" has no answer without it: a
+   * room booked on Thursday is free on Tuesday, so a single number for a whole
+   * week is either wrong or meaningless. With an event chosen the pool answers
+   * for that event's window; without one it can only say how many exist.
+   */
+  focusedTargetId?: string | null;
+  onFocusTarget?: (targetId: string | null) => void;
   /** Ids with a write in flight. */
   busyIds?: ReadonlySet<string>;
   emptyTargets?: ReactNode;
@@ -88,6 +98,8 @@ export const ResourceBoard = ({
   onTargetClick,
   busyIds,
   emptyTargets,
+  focusedTargetId,
+  onFocusTarget,
 }: ResourceBoardProps) => {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -127,17 +139,19 @@ export const ResourceBoard = ({
     return peak;
   };
 
-  /** What is left of a resource across the whole board, for the pool label. */
-  const remaining = (resource: BoardResource) => {
-    let peak = 0;
-    for (const target of targets) {
-      const used = (byTarget.get(target.id) ?? [])
-        .filter((a) => a.resourceId === resource.id)
-        .reduce((sum, a) => sum + a.quantity, 0);
-      peak = Math.max(peak, used);
-    }
-    return resource.total - peak;
-  };
+  const focused = focusedTargetId ? (targets.find((t) => t.id === focusedTargetId) ?? null) : null;
+
+  /**
+   * What is left of a resource — for the chosen event, and only for it.
+   *
+   * The previous version took the largest number committed to any single event
+   * in the week, which meant a room booked once on Thursday read as "0 free"
+   * all week and was folded away as unavailable. It was free every other day.
+   * A pool number is only true relative to a moment, so with no event chosen
+   * this reports how many exist and nothing is treated as depleted.
+   */
+  const remaining = (resource: BoardResource) =>
+    focused ? resource.total - peakUse(resource.id, focused) : resource.total;
 
   const attempt = (resourceId: string, target: BoardTarget) => {
     const resource = resources.find((r) => r.id === resourceId);
@@ -198,7 +212,9 @@ export const ResourceBoard = ({
     const map = new Map<string, BoardResource[]>();
     const used: BoardResource[] = [];
     for (const r of resources) {
-      if (!r.unavailable && remaining(r) <= 0) {
+      // Only meaningful once an event is chosen: without one there is no moment
+      // to be depleted at, and folding things away would hide what is free.
+      if (focused && !r.unavailable && remaining(r) <= 0) {
         used.push(r);
         continue;
       }
@@ -208,7 +224,7 @@ export const ResourceBoard = ({
     }
     return { groups: [...map.entries()], spent: used };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, assignments, targets]);
+  }, [resources, assignments, targets, focusedTargetId]);
 
   const [assignedOpen, setAssignedOpen] = useState(false);
 
@@ -264,9 +280,20 @@ export const ResourceBoard = ({
       <div className="lg:w-72 lg:shrink-0">
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-steel-900">Resources</h2>
-          <p className="mt-0.5 text-xs text-steel-500">
-            Drag onto an event. The number is what is still free.
-          </p>
+          {/*
+            The label has to change with the question. "Still free" is a lie
+            when no event is chosen — free *when*? — so it says what it can.
+          */}
+          {focused ? (
+            <p className="mt-0.5 text-xs text-steel-500">
+              Free during{' '}
+              <span className="font-medium text-steel-700">{focused.title}</span>. Drag one over.
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-steel-500">
+              How many exist. Choose an event to see what is free at that time.
+            </p>
+          )}
 
           <div className="mt-3 space-y-4">
             {groups.length === 0 && (
@@ -413,22 +440,46 @@ export const ResourceBoard = ({
                 className={cx(
                   'rounded-lg bg-white p-4 shadow-sm transition-colors',
                   target.tone === 'muted' && 'opacity-70',
+                  focusedTargetId === target.id && 'ring-2 ring-brand-500',
                   over === target.id && 'ring-2 ring-brand-500',
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
+                    {/*
+                      Selecting the event is the primary act here, because the
+                      pool cannot answer anything until one is chosen. Opening
+                      the record is the secondary one and gets its own link.
+                    */}
                     <button
                       type="button"
-                      onClick={() => onTargetClick?.(target.id)}
-                      className="truncate text-left text-sm font-semibold text-steel-900 hover:text-brand-700 hover:underline"
+                      onClick={() =>
+                        onFocusTarget?.(focusedTargetId === target.id ? null : target.id)
+                      }
+                      aria-pressed={focusedTargetId === target.id}
+                      className="truncate text-left text-sm font-semibold text-steel-900 hover:text-brand-700"
                     >
                       {target.title}
                     </button>
                     {target.subtitle && (
                       <p className="truncate text-xs text-steel-500">{target.subtitle}</p>
                     )}
+                    {onTargetClick && (
+                      <button
+                        type="button"
+                        onClick={() => onTargetClick(target.id)}
+                        className="mt-0.5 text-xs font-medium text-brand-600 hover:underline"
+                      >
+                        Open event →
+                      </button>
+                    )}
                   </div>
+
+                  {focusedTargetId === target.id && (
+                    <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">
+                      Availability shown
+                    </span>
+                  )}
                 </div>
 
                 <ul className="mt-3 space-y-1.5">
