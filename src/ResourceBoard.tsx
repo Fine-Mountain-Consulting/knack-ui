@@ -232,7 +232,15 @@ export const ResourceBoard = ({
     if (!dragging) return;
     setPointer({ x: e.clientX, y: e.clientY });
     let hit: string | null = null;
-    for (const target of targets) {
+    /*
+     * Only the ticked event accepts a drop. The numbers in the pool were worked
+     * out for that event's window and are not true of any other, so a drop
+     * elsewhere would be assigning against figures that do not describe it —
+     * arithmetically checked at the drop, but still a different question than
+     * the one the reader was looking at the answer to.
+     */
+    const droppable = focused ? [focused] : [];
+    for (const target of droppable) {
       const el = targetEls.current.get(target.id);
       if (!el) continue;
       const r = el.getBoundingClientRect();
@@ -245,7 +253,7 @@ export const ResourceBoard = ({
   };
 
   const endDrag = () => {
-    if (dragging && over) {
+    if (dragging && over && over === focusedTargetId) {
       const target = targets.find((t) => t.id === over);
       if (target) attempt(dragging, target);
     }
@@ -459,10 +467,13 @@ export const ResourceBoard = ({
                   targetEls.current.set(target.id, el);
                 }}
                 className={cx(
-                  'rounded-lg bg-white p-4 shadow-sm transition-colors',
+                  'rounded-lg bg-white p-4 shadow-sm transition-all',
                   target.tone === 'muted' && 'opacity-70',
                   focusedTargetId === target.id && 'ring-2 ring-brand-500',
-                  over === target.id && 'ring-2 ring-brand-500',
+                  over === target.id && 'ring-2 ring-brand-500 ring-offset-2',
+                  // Nothing but the ticked event can take a drop, so while one
+                  // is in hand the rest step back rather than inviting it.
+                  dragging && focusedTargetId !== target.id && 'opacity-40',
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -512,8 +523,17 @@ export const ResourceBoard = ({
 
                 <ul className="mt-3 space-y-1.5">
                   {placed.length === 0 && placing.every((p) => p.targetId !== target.id) && (
-                    <li className="rounded border border-dashed border-steel-300 px-2.5 py-3 text-center text-xs text-steel-400">
-                      Drag a resource here
+                    <li
+                      className={cx(
+                        'rounded border border-dashed px-2.5 py-3 text-center text-xs',
+                        focusedTargetId === target.id
+                          ? 'border-steel-300 text-steel-400'
+                          : 'border-steel-200 text-steel-300',
+                      )}
+                    >
+                      {focusedTargetId === target.id
+                        ? 'Drag a resource here'
+                        : 'Tick this event to assign to it'}
                     </li>
                   )}
 

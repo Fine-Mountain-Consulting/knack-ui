@@ -1,6 +1,6 @@
 {
   "name": "@fmc/knack-ui",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Fine Mountain design tokens and component primitives for Knack front ends.",
   "license": "UNLICENSED",
   "private": true,
