@@ -1,6 +1,6 @@
 {
   "name": "@fmc/knack-ui",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Fine Mountain design tokens and component primitives for Knack front ends.",
   "license": "UNLICENSED",
   "private": true,
@@ -22,7 +22,9 @@
     "build": "tsup && cp src/theme.css dist/theme.css",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test": "node test/peak-concurrent.mjs",
+    "verify": "npm run typecheck && npm run build && npm test"
   },
   "peerDependencies": {
     "@fmc/knack-core": "*",

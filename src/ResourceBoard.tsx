@@ -88,6 +88,30 @@ export interface ResourceBoardProps {
 const overlaps = (a: BoardTarget, b: BoardTarget) =>
   new Date(a.start) < new Date(b.end) && new Date(b.start) < new Date(a.end);
 
+export interface UseSpan {
+  start: number;
+  end: number;
+  quantity: number;
+}
+
+/**
+ * The most in use at any single instant, given a set of commitments.
+ *
+ * Exported and pure so it can be tested, which it is: this is the number the
+ * whole board rests on, and it has been wrong once already. Neither a maximum
+ * nor a sum — see `peakUse` for why both are wrong.
+ */
+export const peakConcurrent = (spans: UseSpan[]): number => {
+  let peak = 0;
+  for (const { start } of spans) {
+    const concurrent = spans
+      .filter((s) => s.start <= start && start < s.end)
+      .reduce((sum, s) => sum + s.quantity, 0);
+    peak = Math.max(peak, concurrent);
+  }
+  return peak;
+};
+
 export const ResourceBoard = ({
   resources,
   targets,
@@ -123,20 +147,42 @@ export const ResourceBoard = ({
   }, [assignments]);
 
   /**
-   * The most of a resource committed at any one moment, across everything that
-   * overlaps the given target. Not a simple sum: two events on the same day
-   * that do not overlap can each use the same van.
+   * The most of a resource in use at any single instant inside the target's
+   * window.
+   *
+   * Neither a maximum nor a sum, and both of those are wrong in a way that
+   * matters:
+   *
+   *  - Taking the largest single booking says two events at nine o'clock each
+   *    using one ultrasound need one ultrasound. They need two. (This shipped,
+   *    and reported 4 of 5 free when 3 were.)
+   *  - Adding up everything that overlaps the window says three events chained
+   *    across a morning — A with B, B with C, A never meeting C — need three
+   *    vans. They need two.
+   *
+   * So it sweeps: at each moment a commitment begins, add up everything in use
+   * at exactly that moment, and keep the largest. The peak can only change
+   * where something starts, so those are the only instants worth testing.
    */
   const peakUse = (resourceId: string, target: BoardTarget, ignore?: string) => {
-    let peak = 0;
+    const from = new Date(target.start).getTime();
+    const to = new Date(target.end).getTime();
+
+    // Clipped to the window: usage outside it cannot limit a booking inside it.
+    const spans: Array<{ start: number; end: number; quantity: number }> = [];
     for (const other of targets) {
       if (!overlaps(other, target)) continue;
-      const used = (byTarget.get(other.id) ?? [])
-        .filter((a) => a.resourceId === resourceId && a.id !== ignore)
-        .reduce((sum, a) => sum + a.quantity, 0);
-      peak = Math.max(peak, used);
+      for (const a of byTarget.get(other.id) ?? []) {
+        if (a.resourceId !== resourceId || a.id === ignore) continue;
+        spans.push({
+          start: Math.max(new Date(other.start).getTime(), from),
+          end: Math.min(new Date(other.end).getTime(), to),
+          quantity: a.quantity,
+        });
+      }
     }
-    return peak;
+
+    return peakConcurrent(spans);
   };
 
   const focused = focusedTargetId ? (targets.find((t) => t.id === focusedTargetId) ?? null) : null;

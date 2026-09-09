@@ -82,12 +82,13 @@ export { MonthCalendar, monthBounds } from './Calendar.js';
 export { DashboardGrid } from './DashboardGrid.js';
 export type { DashboardCard, DashboardGridProps, HiddenCard } from './DashboardGrid.js';
 
-export { ResourceBoard } from './ResourceBoard.js';
+export { ResourceBoard, peakConcurrent } from './ResourceBoard.js';
 export type {
   BoardResource,
   BoardTarget,
   BoardAssignment,
   ResourceBoardProps,
+  UseSpan,
 } from './ResourceBoard.js';
 
 export { Scheduler } from './Scheduler.js';
